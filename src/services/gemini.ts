@@ -106,8 +106,16 @@ export async function generateMealImage(mealCombo: string): Promise<string> {
   }
 
   try {
+
+  function sanitizeMealCombo(mealCombo: string): string {
+  return mealCombo
+    .replace(/[^a-zA-Z0-9,\-\s]/g, "")
+    .trim()
+    .slice(0, 120);
+}
+    const safeMealCombo = sanitizeMealCombo(mealCombo);
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+     model: "gemini-3.1-flash-image-preview",
       contents: [
         {
           role: "user",
@@ -115,7 +123,7 @@ export async function generateMealImage(mealCombo: string): Promise<string> {
             {
               text: `Generate an image of FOOD ONLY.
 
-Subject: A Kenyan meal combo consisting strictly of: ${mealCombo}.
+Subject: A Kenyan meal combo consisting strictly of: ${safeMealCombo}.
 
 Hard requirements:
 - Show only the prepared meal
