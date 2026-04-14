@@ -24,6 +24,8 @@ const RESTRICTED_WORDS = [
   "msolombo",
   "ngwati",
   "matako",
+  "malaya",
+  "nitakutusi"
 ] as const;
 
 function containsRestrictedContent(input: string): boolean {
@@ -111,7 +113,36 @@ export async function generateMealImage(mealCombo: string): Promise<string> {
           role: "user",
           parts: [
             {
-              text: `Create a high-quality professional food photo of this Kenyan meal combo: ${mealCombo}. Make it look authentic, delicious, well plated, vibrant, realistic, and suitable for a student food app. Cinematic lighting. Square composition.`,
+              text: `Generate an image of FOOD ONLY.
+
+Subject: A Kenyan meal combo consisting strictly of: ${mealCombo}.
+
+Hard requirements:
+- Show only the prepared meal
+- No people
+- No hands
+- No face
+- No human body
+- No animals
+- No drinks unless explicitly mentioned in the meal combo
+- No restaurant interior
+- No background story elements
+- No text
+- No labels
+- No watermark
+- No extra objects unrelated to the meal
+
+Style requirements:
+- Realistic professional food photography
+- Authentic Kenyan presentation
+- Natural plating on a simple plate or bowl
+- Clean plain background
+- Bright appetizing lighting
+- Sharp focus on the food
+- Square composition
+
+Output goal:
+A realistic food app image showing only the exact meal mentioned, nothing else.`,
             },
           ],
         },
@@ -154,7 +185,7 @@ export async function generateProfileAvatar(fullname: string): Promise<string> {
           role: "user",
           parts: [
             {
-              text: `Create a clean, friendly, professional student avatar for the name ${fullname}. Use a modern illustrated profile style, neutral background, polished lighting, and university-profile quality. No text.`,
+              text: `Create a clean, friendly, professional 3D student avatar for the name ${fullname}. Use a modern illustrated profile style, neutral background, polished lighting, and university-profile quality. No text.`,
             },
           ],
         },
