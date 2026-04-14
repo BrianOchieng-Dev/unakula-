@@ -63,7 +63,10 @@ export async function generateMealVideo(mealCombo: string): Promise<string> {
   }
 
   try {
-    let operation: any = await (ai.models as any).generateVideos({
+    // Create a fresh instance for video generation to use the user-selected API key
+    const videoAi = new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY || "" });
+    
+    let operation: any = await (videoAi.models as any).generateVideos({
       model: 'veo-3.1-lite-generate-preview',
       prompt: `A high-quality, professional food cinematography video of a Kenyan meal combo: ${mealCombo}. The camera should slowly pan over the steaming hot food, showing the textures of the meal. NO PEOPLE, NO FACES. Cinematic lighting, 1080p, vibrant colors.`,
       config: {
@@ -76,7 +79,7 @@ export async function generateMealVideo(mealCombo: string): Promise<string> {
     // Poll for completion
     while (!operation.done) {
       await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await (ai.operations as any).get(operation.name);
+      operation = await (videoAi.operations as any).get(operation.name);
     }
 
     if (operation.response?.generatedVideos?.[0]?.video?.uri) {

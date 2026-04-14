@@ -480,12 +480,30 @@ export default function App() {
 
   const handleGenerateVideo = async (postId: string, mealCombo: string) => {
     try {
+      // Check if user has selected an API key (required for Veo)
+      const aistudio = (window as any).aistudio;
+      if (aistudio) {
+        const hasKey = await aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          toast.info("Video generation requires a paid Gemini API key. Please select one.");
+          await aistudio.openSelectKey();
+          // Skill guidance: proceed after triggering openSelectKey
+        }
+      }
+
       const videoURL = await generateMealVideo(mealCombo);
       await setDoc(doc(db, "posts", postId), { videoURL }, { merge: true });
       toast.success("AI Video generated successfully!");
     } catch (error: any) {
+      const errorMsg = error.message || "";
+      const isPermissionDenied = errorMsg.includes("PERMISSION_DENIED") || errorMsg.includes("permission") || error.status === "PERMISSION_DENIED";
+      const isNotFound = errorMsg.includes("Requested entity was not found");
+
       if (error.message === "INAPPROPRIATE_CONTENT") {
         toast.error("Content restricted: Please keep it food-related.");
+      } else if (isPermissionDenied || isNotFound) {
+        toast.error("API Key error. Please ensure you have selected a valid paid API key.");
+        await (window as any).aistudio?.openSelectKey();
       } else {
         toast.error("Failed to generate video. Please try again later.");
       }
