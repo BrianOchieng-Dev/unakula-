@@ -321,8 +321,29 @@ export default function App() {
 
     setIsGeneratingImage(true);
     try {
-      const rawImageURL = await generateMealImage(data.mealCombo);
-      const imageURL = await compressImage(rawImageURL, 800, 600, 0.6); // Increased compression
+      let rawImageURL;
+      try {
+        rawImageURL = await generateMealImage(data.mealCombo);
+      } catch (e: any) {
+        if (e.message === "PERMISSION_DENIED") {
+          toast.info("High-quality image generation requires a paid Gemini API key. Please select one.");
+          await (window as any).aistudio?.openSelectKey();
+          rawImageURL = `https://loremflickr.com/800/800/food,meal,kenyan?lock=${encodeURIComponent(data.mealCombo)}`;
+        } else {
+          throw e;
+        }
+      }
+
+      let imageURL = rawImageURL;
+      
+      try {
+        // Only try to compress if it's a base64 string or we want to try remote
+        imageURL = await compressImage(rawImageURL, 800, 600, 0.6);
+      } catch (compressError) {
+        console.warn("Compression failed, using raw image URL:", compressError);
+        // If compression fails (e.g. CORS on fallback), use the raw URL
+      }
+
       const path = "posts";
       await addDoc(collection(db, path), {
         ...data,
@@ -349,6 +370,7 @@ export default function App() {
 
       toast.success("Meal combo shared!");
     } catch (error: any) {
+      console.error("Post creation error:", error);
       if (error.message === "INAPPROPRIATE_CONTENT") {
         toast.error("⚠️ Inappropriate content detected. Please keep your meal descriptions respectful.");
       } else {
@@ -370,10 +392,39 @@ export default function App() {
     try {
       let mediaURL = "";
       if (data.mediaType === 'image') {
-        const rawMediaURL = await generateMealImage(data.content);
-        mediaURL = await compressImage(rawMediaURL, 800, 800, 0.6); // Compress story images
+        let rawMediaURL;
+        try {
+          rawMediaURL = await generateMealImage(data.content);
+        } catch (e: any) {
+          if (e.message === "PERMISSION_DENIED") {
+            toast.info("High-quality image generation requires a paid Gemini API key. Please select one.");
+            await (window as any).aistudio?.openSelectKey();
+            rawMediaURL = `https://loremflickr.com/800/800/food,meal,kenyan?lock=${encodeURIComponent(data.content)}`;
+          } else {
+            throw e;
+          }
+        }
+
+        try {
+          mediaURL = await compressImage(rawMediaURL, 800, 800, 0.6);
+        } catch (compressError) {
+          console.warn("Story image compression failed:", compressError);
+          mediaURL = rawMediaURL;
+        }
       } else if (data.mediaType === 'video') {
-        mediaURL = await generateMealVideo(data.content);
+        try {
+          mediaURL = await generateMealVideo(data.content);
+        } catch (e: any) {
+          if (e.message === "PERMISSION_DENIED") {
+            toast.info("Video generation requires a paid Gemini API key. Please select one.");
+            await (window as any).aistudio?.openSelectKey();
+            // Fallback to image for video story if video fails due to permission
+            const rawMediaURL = `https://loremflickr.com/800/800/food,meal,kenyan?lock=${encodeURIComponent(data.content)}`;
+            mediaURL = rawMediaURL;
+          } else {
+            throw e;
+          }
+        }
       }
 
       const path = "stories";
@@ -392,9 +443,14 @@ export default function App() {
       });
 
       toast.success("Story shared successfully!");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to share story.");
+    } catch (error: any) {
+      console.error("Story creation error:", error);
+      if (error.message === "INAPPROPRIATE_CONTENT") {
+        toast.error("⚠️ Inappropriate content detected. Please keep your story descriptions respectful.");
+      } else {
+        handleFirestoreError(error, OperationType.CREATE, "stories");
+        toast.error("Failed to share story.");
+      }
     } finally {
       setIsGeneratingStory(false);
     }
