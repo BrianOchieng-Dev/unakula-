@@ -1,26 +1,55 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Utensils, MapPin, DollarSign, Info, Loader2, Sparkles } from "lucide-react";
+import { Utensils, MapPin, DollarSign, Info, Loader2, Sparkles, Smile, Check } from "lucide-react";
+import EmojiPicker, { Theme } from "emoji-picker-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => Promise<void>;
   isGeneratingImage: boolean;
+  editPost?: any;
 }
 
-export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }: CreatePostModalProps) {
+export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage, editPost }: CreatePostModalProps) {
   const [formData, setFormData] = useState({
     mealCombo: "",
     location: "",
     price: "",
     description: "",
+    mealType: "lunch",
+    dietaryRestrictions: [] as string[],
   });
   const [loading, setLoading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  useEffect(() => {
+    if (editPost) {
+      setFormData({
+        mealCombo: editPost.mealCombo || "",
+        location: editPost.location || "",
+        price: editPost.price?.toString() || "",
+        description: editPost.description || "",
+        mealType: editPost.mealType || "lunch",
+        dietaryRestrictions: editPost.dietaryRestrictions || [],
+      });
+    } else {
+      setFormData({
+        mealCombo: "",
+        location: "",
+        price: "",
+        description: "",
+        mealType: "lunch",
+        dietaryRestrictions: [],
+      });
+    }
+  }, [editPost, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +59,9 @@ export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }
         ...formData,
         price: parseFloat(formData.price),
       });
-      setFormData({ mealCombo: "", location: "", price: "", description: "" });
+      if (!editPost) {
+        setFormData({ mealCombo: "", location: "", price: "", description: "", mealType: "lunch", dietaryRestrictions: [] });
+      }
       onClose();
     } catch (error) {
       console.error(error);
@@ -39,12 +70,29 @@ export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }
     }
   };
 
+  const toggleDietary = (restriction: string) => {
+    setFormData(prev => ({
+      ...prev,
+      dietaryRestrictions: prev.dietaryRestrictions.includes(restriction)
+        ? prev.dietaryRestrictions.filter(r => r !== restriction)
+        : [...prev.dietaryRestrictions, restriction]
+    }));
+  };
+
+  const onEmojiClick = (emojiData: any) => {
+    setFormData(prev => ({
+      ...prev,
+      description: prev.description + emojiData.emoji
+    }));
+    setShowEmojiPicker(false);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] bg-white/10 backdrop-blur-2xl border-white/20 text-white">
+      <DialogContent className="sm:max-w-[500px] bg-slate-950 border-white/10 text-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-center bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-            Share Your Meal
+            {editPost ? "Update Your Meal" : "Share Your Meal"}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -96,12 +144,57 @@ export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description (Optional)</Label>
+            <Label>Meal Type</Label>
+            <div className="flex gap-2">
+              {["breakfast", "lunch", "dinner", "snack"].map((type) => (
+                <Button
+                  key={type}
+                  type="button"
+                  variant={formData.mealType === type ? "default" : "outline"}
+                  className={`flex-1 text-xs capitalize ${formData.mealType === type ? 'bg-blue-600' : 'bg-white/5 border-white/10'}`}
+                  onClick={() => setFormData({ ...formData, mealType: type })}
+                >
+                  {type}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dietary Restrictions</Label>
+            <div className="flex flex-wrap gap-2">
+              {["Vegetarian", "Vegan", "Halal", "Gluten-Free"].map((restriction) => (
+                <Button
+                  key={restriction}
+                  type="button"
+                  variant="outline"
+                  className={`text-xs h-8 px-3 rounded-full border-white/10 ${formData.dietaryRestrictions.includes(restriction) ? 'bg-blue-600 border-blue-600' : 'bg-white/5'}`}
+                  onClick={() => toggleDietary(restriction)}
+                >
+                  {formData.dietaryRestrictions.includes(restriction) && <Check className="w-3 h-3 mr-1" />}
+                  {restriction}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="description">Description (Optional)</Label>
+              <Popover>
+                <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 w-8 p-0 text-blue-400 hover:text-blue-300")}>
+                  <Smile className="w-5 h-5" />
+                </PopoverTrigger>
+                <PopoverContent className="p-0 border-none bg-transparent" side="top" align="end">
+                  <EmojiPicker theme={Theme.DARK} onEmojiClick={onEmojiClick} />
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="relative">
               <Info className="absolute left-3 top-3 w-4 h-4 text-blue-400" />
               <Textarea
                 id="description"
-                placeholder="Tell us more about the taste..."
+                placeholder="Tell us more about the taste... use @ to mention friends"
                 className="pl-10 bg-white/5 border-white/10 focus:border-blue-500 min-h-[100px] text-white placeholder:text-blue-100/30"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -109,12 +202,14 @@ export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }
             </div>
           </div>
 
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-1" />
-            <p className="text-xs text-blue-100/70">
-              Ulikula? AI will automatically generate a delicious image for your meal combo!
-            </p>
-          </div>
+          {!editPost && (
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-1" />
+              <p className="text-xs text-blue-100/70">
+                Ulikula? AI will automatically generate a delicious image for your meal combo!
+              </p>
+            </div>
+          )}
 
           <Button 
             type="submit" 
@@ -127,7 +222,7 @@ export function CreatePostModal({ isOpen, onClose, onSubmit, isGeneratingImage }
                 {isGeneratingImage ? "Generating AI Image..." : "Posting..."}
               </>
             ) : (
-              "Post Combo"
+              editPost ? "Update Post" : "Post Combo"
             )}
           </Button>
         </form>

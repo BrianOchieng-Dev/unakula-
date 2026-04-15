@@ -98,6 +98,8 @@ service cloud.firestore {
              data.authorName is string &&
              data.createdAt is timestamp &&
              (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('mealType' in data) || (data.mealType in ['breakfast', 'lunch', 'dinner', 'snack'])) &&
+             (!('dietaryRestrictions' in data) || (data.dietaryRestrictions is list)) &&
              (!('imageURL' in data) || isValidUrl(data.imageURL)) &&
              (!('videoURL' in data) || isValidUrl(data.videoURL)) &&
              (!('authorPhoto' in data) || isValidUrl(data.authorPhoto)) &&
@@ -120,6 +122,18 @@ service cloud.firestore {
              data.createdAt is timestamp &&
              (!('authorPhoto' in data) || isValidUrl(data.authorPhoto)) &&
              (!('sticker' in data) || (data.sticker is string && data.sticker.size() <= 200));
+    }
+
+    function isValidStory(data) {
+      return data.keys().hasAll(['userId', 'authorName', 'content', 'mediaType', 'createdAt', 'expiresAt']) &&
+             data.userId == request.auth.uid &&
+             data.authorName is string &&
+             data.content is string &&
+             data.mediaType in ['image', 'video', 'text'] &&
+             data.createdAt is timestamp &&
+             data.expiresAt is timestamp &&
+             (!('authorPhoto' in data) || isValidUrl(data.authorPhoto)) &&
+             (!('mediaURL' in data) || isValidUrl(data.mediaURL));
     }
 
     function isValidCounterUpdate(postId) {
@@ -206,6 +220,17 @@ service cloud.firestore {
       
       // Authenticated users can create comments
       allow create: if isAuthenticated() && isValidComment(request.resource.data);
+      
+      // Only author or admin can delete
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    match /stories/{storyId} {
+      // Stories are public to read
+      allow read: if true;
+      
+      // Authenticated users can create stories
+      allow create: if isAuthenticated() && isValidStory(request.resource.data);
       
       // Only author or admin can delete
       allow delete: if isOwner(resource.data.userId) || isAdmin();

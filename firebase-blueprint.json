@@ -50,6 +50,8 @@
         "location": { "type": "string", "description": "Where the meal was bought or eaten" },
         "price": { "type": "number", "description": "Price of the meal" },
         "description": { "type": "string", "description": "Optional extra details" },
+        "mealType": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snack"], "description": "Type of meal" },
+        "dietaryRestrictions": { "type": "array", "items": { "type": "string" }, "description": "e.g. Vegetarian, Vegan, Halal" },
         "imageURL": { "type": "string", "format": "uri", "description": "AI generated image URL" },
         "videoURL": { "type": "string", "format": "uri", "description": "AI generated video URL" },
         "authorId": { "type": "string", "description": "UID of the student who posted" },
@@ -85,6 +87,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "postId", "authorName", "text", "createdAt"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "A short-lived update shared by a student.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string", "description": "Text or emoji content" },
+        "mediaURL": { "type": "string", "format": "uri", "description": "Optional image/video URL" },
+        "mediaType": { "type": "string", "enum": ["image", "video", "text"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "authorName", "content", "mediaType", "createdAt", "expiresAt"]
     }
   },
   "firestore": {
@@ -103,6 +121,10 @@
     "/comments/{commentId}": {
       "schema": "Comment",
       "description": "Comments on posts"
+    },
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "Student stories"
     },
     "/follows/{followId}": {
       "schema": "Follow",

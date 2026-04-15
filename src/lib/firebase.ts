@@ -10,7 +10,7 @@ import {
   updateProfile,
   deleteUser
 } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDoc, getDocs, serverTimestamp, increment, writeBatch, where, deleteDoc, limit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, getDoc, getDocs, serverTimestamp, increment, writeBatch, where, deleteDoc, limit, Timestamp } from 'firebase/firestore';
 import firebaseConfig from '@/../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -92,5 +92,6 @@ export {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  deleteUser
+  deleteUser,
+  Timestamp
 };

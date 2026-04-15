@@ -1,4 +1,4 @@
-import { Home, Search, PlusSquare, Heart, User } from "lucide-react";
+import { Home, Search, PlusSquare, Film, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface BottomNavProps {
@@ -23,13 +23,13 @@ export function BottomNav({ activeTab, onTabChange, onAddClick, user }: BottomNa
         </button>
         
         <button
-          onClick={() => onTabChange('search')}
+          onClick={() => onTabChange('reels')}
           className={cn(
             "p-2 rounded-xl transition-colors",
-            activeTab === 'search' ? "text-blue-400 bg-blue-400/10" : "text-blue-100/50 hover:text-blue-100"
+            activeTab === 'reels' ? "text-blue-400 bg-blue-400/10" : "text-blue-100/50 hover:text-blue-100"
           )}
         >
-          <Search className="w-6 h-6" />
+          <Film className="w-6 h-6" />
         </button>
 
         <button
@@ -40,13 +40,13 @@ export function BottomNav({ activeTab, onTabChange, onAddClick, user }: BottomNa
         </button>
 
         <button
-          onClick={() => onTabChange('likes')}
+          onClick={() => onTabChange('search')}
           className={cn(
             "p-2 rounded-xl transition-colors",
-            activeTab === 'likes' ? "text-blue-400 bg-blue-400/10" : "text-blue-100/50 hover:text-blue-100"
+            activeTab === 'search' ? "text-blue-400 bg-blue-400/10" : "text-blue-100/50 hover:text-blue-100"
           )}
         >
-          <Heart className="w-6 h-6" />
+          <Search className="w-6 h-6" />
         </button>
 
         <button

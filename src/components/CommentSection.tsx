@@ -15,11 +15,14 @@ import {
 } from "@/lib/firebase";
 import { formatDistanceToNow } from "date-fns";
 import { Send, Smile, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import EmojiPicker, { Theme } from "emoji-picker-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface Comment {
   id: string;
@@ -123,6 +126,11 @@ export function CommentSection({ postId, user, profile }: CommentSectionProps) {
     }
   };
 
+  const onEmojiClick = (emojiData: any) => {
+    setNewComment(prev => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+  };
+
   return (
     <div className="mt-4 pt-4 border-t border-white/10 space-y-4">
       <div className="max-h-60 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
@@ -184,13 +192,14 @@ export function CommentSection({ postId, user, profile }: CommentSectionProps) {
               className="bg-white/5 border-white/10 text-white rounded-xl pr-10 text-sm h-10"
               disabled={isSubmitting}
             />
-            <button
-              type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="absolute right-3 top-2.5 text-blue-200/60 hover:text-blue-400 transition-colors"
-            >
-              <Smile className="w-5 h-5" />
-            </button>
+            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+              <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "absolute right-2 top-1 h-8 w-8 p-0 text-blue-200/60 hover:text-blue-400 transition-colors")}>
+                <Smile className="w-5 h-5" />
+              </PopoverTrigger>
+              <PopoverContent className="p-0 border-none bg-transparent mb-2" side="top" align="end">
+                <EmojiPicker theme={Theme.DARK} onEmojiClick={onEmojiClick} />
+              </PopoverContent>
+            </Popover>
           </div>
           <Button 
             type="submit" 
@@ -202,52 +211,19 @@ export function CommentSection({ postId, user, profile }: CommentSectionProps) {
           </Button>
         </div>
 
-        <AnimatePresence>
-          {showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="absolute bottom-full mb-2 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-3 z-50 shadow-2xl"
+        <div className="flex flex-wrap gap-2">
+          {STICKERS.map(sticker => (
+            <button
+              key={sticker.label}
+              type="button"
+              onClick={() => handleSubmit(undefined, sticker.emoji)}
+              className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-2 py-1 rounded-lg text-[10px] text-blue-100 transition-colors border border-white/5"
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold text-blue-200/60 uppercase tracking-wider">Quick Emojis</span>
-                <button onClick={() => setShowEmojiPicker(false)} className="text-blue-200/40 hover:text-white">
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {EMOJIS.map(emoji => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => setNewComment(prev => prev + emoji)}
-                    className="text-xl hover:scale-125 transition-transform p-1"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-              
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-blue-200/60 uppercase tracking-wider">MMUST Stickers</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {STICKERS.map(sticker => (
-                    <button
-                      key={sticker.label}
-                      type="button"
-                      onClick={() => handleSubmit(undefined, sticker.emoji)}
-                      className="flex items-center gap-2 bg-white/5 hover:bg-white/10 p-2 rounded-lg text-xs text-blue-100 transition-colors border border-white/5"
-                    >
-                      <span className="text-lg">{sticker.emoji}</span>
-                      <span>{sticker.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <span>{sticker.emoji}</span>
+              <span>{sticker.label}</span>
+            </button>
+          ))}
+        </div>
       </form>
     </div>
   );

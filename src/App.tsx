@@ -26,7 +26,8 @@ import {
   handleFirestoreError,
   OperationType,
   deleteUser,
-  deleteDoc
+  deleteDoc,
+  Timestamp
 } from "@/lib/firebase";
 import { Navbar } from "./components/Navbar";
 import { AuthModal } from "./components/AuthModal";
@@ -36,19 +37,27 @@ import { ChatBot } from "./components/ChatBot";
 import { ProfilePage } from "./components/ProfilePage";
 import { Stories } from "./components/Stories";
 import { BottomNav } from "./components/BottomNav";
+import { ReelsPage } from "./components/ReelsPage";
+import { Onboarding } from "./components/Onboarding";
+import { CreateStoryModal } from "./components/CreateStoryModal";
+import { StoryViewer } from "./components/StoryViewer";
 import { generateMealImage, chatWithAssistant, generateMealVideo } from "./services/gemini";
 import { Toaster, toast } from "sonner";
 import { compressImage } from "@/lib/utils";
-import { Plus, Filter, Sparkles, Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Plus, Filter, Sparkles, Search, X, Film, ChevronDown, CheckCircle2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { motion, AnimatePresence } from "motion/react";
+import { updateDoc } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [view, setView] = useState<'feed' | 'profile'>('feed');
+  const [view, setView] = useState<'feed' | 'profile' | 'reels'>('feed');
   const [posts, setPosts] = useState<any[]>([]);
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
   const [following, setFollowing] = useState<Set<string>>(new Set());
@@ -59,11 +68,22 @@ export default function App() {
   
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup" | "register-details">("login");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+  const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
+  const [selectedStoryIndex, setSelectedStoryIndex] = useState(0);
+  const [editPost, setEditPost] = useState<any>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("recent");
+  const [mealTypeFilter, setMealTypeFilter] = useState("all");
+  const [dietaryFilter, setDietaryFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [realStories, setRealStories] = useState<any[]>([]);
+  const [successAction, setSuccessAction] = useState<string | null>(null);
 
   // Auth Listener
   useEffect(() => {
@@ -78,6 +98,12 @@ export default function App() {
             console.log("User profile found:", userDoc.data());
             setProfile(userDoc.data());
             setIsAuthModalOpen(false);
+
+            // Check for first time user
+            const hasSeenOnboarding = localStorage.getItem(`onboarding_${firebaseUser.uid}`);
+            if (!hasSeenOnboarding) {
+              setShowOnboarding(true);
+            }
           } else {
             console.log("No user profile found for UID:", firebaseUser.uid);
             // Only open modal if it's not already open
@@ -181,6 +207,35 @@ export default function App() {
     return unsubscribe;
   }, [user]);
 
+  useEffect(() => {
+    const path = "stories";
+    const now = Timestamp.now();
+    const q = query(
+      collection(db, path),
+      where("expiresAt", ">", now),
+      orderBy("expiresAt", "asc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const storiesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      console.log("Real Stories Updated:", storiesData);
+      setRealStories(storiesData);
+    }, (error) => {
+      // Handle missing index error gracefully
+      if (error instanceof Error && error.message.includes("The query requires an index")) {
+        console.warn("Stories index not yet created. Falling back to empty stories.");
+        setRealStories([]);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
   const handleLogin = () => {
     setAuthModalMode("login");
     setIsAuthModalOpen(true);
@@ -267,7 +322,7 @@ export default function App() {
     setIsGeneratingImage(true);
     try {
       const rawImageURL = await generateMealImage(data.mealCombo);
-      const imageURL = await compressImage(rawImageURL, 800, 600, 0.7); // Posts can be slightly larger
+      const imageURL = await compressImage(rawImageURL, 800, 600, 0.6); // Increased compression
       const path = "posts";
       await addDoc(collection(db, path), {
         ...data,
@@ -303,6 +358,58 @@ export default function App() {
     } finally {
       setIsGeneratingImage(false);
     }
+  };
+
+  const handleCreateStory = async (data: any) => {
+    if (!user || !profile) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    setIsGeneratingStory(true);
+    try {
+      let mediaURL = "";
+      if (data.mediaType === 'image') {
+        const rawMediaURL = await generateMealImage(data.content);
+        mediaURL = await compressImage(rawMediaURL, 800, 800, 0.6); // Compress story images
+      } else if (data.mediaType === 'video') {
+        mediaURL = await generateMealVideo(data.content);
+      }
+
+      const path = "stories";
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+
+      await addDoc(collection(db, path), {
+        userId: user.uid,
+        authorName: profile.fullname,
+        authorPhoto: profile.photoURL || "",
+        content: data.content,
+        mediaURL,
+        mediaType: data.mediaType,
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+      });
+
+      toast.success("Story shared successfully!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to share story.");
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
+
+  const handleEditPost = (post: any) => {
+    setEditPost(post);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOnboardingComplete = () => {
+    if (user) {
+      localStorage.setItem(`onboarding_${user.uid}`, "true");
+    }
+    setShowOnboarding(false);
   };
 
   const handleSendMessage = async (message: string) => {
@@ -372,6 +479,8 @@ export default function App() {
         batch.update(doc(db, "users", targetUserId), { followersCount: increment(1) });
       }
       await batch.commit();
+      setSuccessAction(isFollowing ? "Unfollowed" : "Following");
+      setTimeout(() => setSuccessAction(null), 2000);
       toast.success(isFollowing ? "Unfollowed" : "Following");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, "follows");
@@ -413,6 +522,8 @@ export default function App() {
       batch.update(doc(db, "users", targetUserId), { streakCount: increment(1) });
       
       await batch.commit();
+      setSuccessAction("Streak Started!");
+      setTimeout(() => setSuccessAction(null), 2000);
       toast.success("Streak partnership started! Post meals together to grow your streak.");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, "streaks");
@@ -518,18 +629,34 @@ export default function App() {
       result = result.filter(p => 
         p.mealCombo.toLowerCase().includes(query) ||
         p.location.toLowerCase().includes(query) ||
-        p.authorName.toLowerCase().includes(query)
+        p.authorName.toLowerCase().includes(query) ||
+        (p.description && p.description.toLowerCase().includes(query))
       );
     }
+
+    if (mealTypeFilter !== "all") {
+      result = result.filter(p => p.mealType === mealTypeFilter);
+    }
+
+    if (dietaryFilter !== "all") {
+      result = result.filter(p => p.dietaryRestrictions?.includes(dietaryFilter));
+    }
+
+    if (locationFilter !== "all") {
+      result = result.filter(p => p.location === locationFilter);
+    }
+
     if (filter === "random") {
       result = result.sort(() => Math.random() - 0.5);
     } else if (filter === "my-posts" && user) {
       result = result.filter(p => p.authorId === user.uid);
     } else if (filter === "following" && user) {
       result = result.filter(p => following.has(p.authorId));
+    } else if (filter === "popular") {
+      result.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
     }
     return result;
-  }, [posts, searchQuery, filter, user, following]);
+  }, [posts, searchQuery, filter, user, following, mealTypeFilter, dietaryFilter, locationFilter]);
 
   const handleShare = (post: any) => {
     if (navigator.share) {
@@ -545,18 +672,55 @@ export default function App() {
   };
 
   const stories = useMemo(() => {
+    // Combine real stories and trending authors
     const uniqueAuthors = new Map();
+    
+    // Add real stories first
+    realStories.forEach(s => {
+      if (!uniqueAuthors.has(s.userId)) {
+        uniqueAuthors.set(s.userId, {
+          id: s.userId,
+          name: s.authorName,
+          photoURL: s.authorPhoto,
+          isTrending: false,
+          isRealStory: true,
+          storyData: s
+        });
+      }
+    });
+
+    // Add trending authors from posts
     posts.forEach(p => {
       if (!uniqueAuthors.has(p.authorId)) {
         uniqueAuthors.set(p.authorId, {
           id: p.authorId,
           name: p.authorName,
           photoURL: p.authorPhoto,
-          isTrending: (p.likesCount || 0) > 5
+          isTrending: (p.likesCount || 0) > 5,
+          isRealStory: false
         });
       }
     });
-    return Array.from(uniqueAuthors.values()).slice(0, 10);
+    return Array.from(uniqueAuthors.values()).slice(0, 15);
+  }, [posts, realStories]);
+
+  const handleViewStory = (index: number) => {
+    const story = stories[index];
+    if (story.isRealStory) {
+      // Find all real stories to show in viewer
+      setSelectedStoryIndex(realStories.findIndex(s => s.id === story.storyData.id));
+      setIsStoryViewerOpen(true);
+    } else {
+      toast.info(`${story.name} is trending! Check out their posts below.`);
+    }
+  };
+
+  const locations = useMemo(() => {
+    const locs = new Set<string>();
+    posts.forEach(p => {
+      if (p.location) locs.add(p.location);
+    });
+    return Array.from(locs).sort();
   }, [posts]);
 
   return (
@@ -575,7 +739,11 @@ export default function App() {
         toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
       />
 
-      <main className="max-w-2xl mx-auto px-4 pt-24 pb-24">
+      <main className={cn(
+        "mx-auto pt-24 pb-24",
+        view === 'reels' ? "max-w-full px-0" : "max-w-2xl px-4"
+      )}>
+        {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
         <AnimatePresence mode="wait">
           {view === 'feed' ? (
             <motion.div
@@ -586,7 +754,12 @@ export default function App() {
               className="space-y-6"
             >
               {/* Stories Section */}
-              <Stories stories={stories} />
+              <Stories 
+                stories={stories} 
+                onAddStory={() => user ? setIsStoryModalOpen(true) : setIsAuthModalOpen(true)}
+                onViewStory={handleViewStory}
+                userProfile={profile}
+              />
 
               {/* Search & Filter */}
               <div className="flex flex-col gap-4">
@@ -608,21 +781,88 @@ export default function App() {
                   )}
                 </div>
                 
-                <Tabs value={filter} onValueChange={setFilter} className="w-full">
-                  <TabsList className="bg-white/5 border border-white/10 p-1 rounded-xl h-11 w-full grid grid-cols-3 md:inline-flex md:w-auto">
-                    <TabsTrigger value="recent" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
-                      Recent
-                    </TabsTrigger>
-                    <TabsTrigger value="random" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
-                      Recommended
-                    </TabsTrigger>
-                    {user && (
-                      <TabsTrigger value="following" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
-                        Following
+                <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  <Tabs value={filter} onValueChange={setFilter} className="w-auto">
+                    <TabsList className="bg-white/5 border border-white/10 p-1 rounded-xl h-11">
+                      <TabsTrigger value="recent" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
+                        Recent
                       </TabsTrigger>
-                    )}
-                  </TabsList>
-                </Tabs>
+                      <TabsTrigger value="popular" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
+                        Popular
+                      </TabsTrigger>
+                      <TabsTrigger value="random" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
+                        Recommended
+                      </TabsTrigger>
+                      {user && (
+                        <TabsTrigger value="following" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs font-bold">
+                          Following
+                        </TabsTrigger>
+                      )}
+                    </TabsList>
+                  </Tabs>
+
+                  <Popover>
+                    <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "bg-white/5 border-white/10 text-xs rounded-xl h-11 px-4")}>
+                      <Filter className="w-4 h-4 mr-2" />
+                      Filters
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 bg-slate-900 border-white/10 text-white p-4 space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase tracking-wider text-blue-200/50">Meal Type</Label>
+                        <select 
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm"
+                          value={mealTypeFilter}
+                          onChange={(e) => setMealTypeFilter(e.target.value)}
+                        >
+                          <option value="all">All Types</option>
+                          <option value="breakfast">Breakfast</option>
+                          <option value="lunch">Lunch</option>
+                          <option value="dinner">Dinner</option>
+                          <option value="snack">Snack</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase tracking-wider text-blue-200/50">Dietary</Label>
+                        <select 
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm"
+                          value={dietaryFilter}
+                          onChange={(e) => setDietaryFilter(e.target.value)}
+                        >
+                          <option value="all">All Dietary</option>
+                          <option value="Vegetarian">Vegetarian</option>
+                          <option value="Vegan">Vegan</option>
+                          <option value="Halal">Halal</option>
+                          <option value="Gluten-Free">Gluten-Free</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase tracking-wider text-blue-200/50">Location</Label>
+                        <select 
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm"
+                          value={locationFilter}
+                          onChange={(e) => setLocationFilter(e.target.value)}
+                        >
+                          <option value="all">All Locations</option>
+                          {locations.map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full text-[10px] text-blue-400"
+                        onClick={() => { 
+                          setMealTypeFilter("all"); 
+                          setDietaryFilter("all"); 
+                          setLocationFilter("all");
+                        }}
+                      >
+                        Reset Filters
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
 
               {/* Feed */}
@@ -649,6 +889,7 @@ export default function App() {
                         onStreak={() => handleBecomeStreakPartner(post.authorId)}
                         onShare={handleShare} 
                         onDelete={handleDeletePost}
+                        onEdit={handleEditPost}
                         onGenerateVideo={handleGenerateVideo}
                         isAdmin={user?.email === "bochieng228@gmail.com"}
                       />
@@ -667,6 +908,25 @@ export default function App() {
                 </div>
               )}
             </motion.div>
+          ) : view === 'reels' ? (
+            <motion.div
+              key="reels"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <ReelsPage 
+                user={user}
+                profile={profile}
+                userLikes={userLikes}
+                following={following}
+                streaks={streaks}
+                onLike={handleToggleLike}
+                onFollow={handleFollow}
+                onStreak={handleBecomeStreakPartner}
+                onShare={handleShare}
+              />
+            </motion.div>
           ) : (
             <ProfilePage 
               profile={profile} 
@@ -683,31 +943,24 @@ export default function App() {
       </main>
 
       <BottomNav 
-        activeTab={view === 'profile' ? 'profile' : filter === 'my-posts' ? 'likes' : searchQuery ? 'search' : 'feed'}
-        onTabChange={(tab) => {
-          if (tab === 'profile') setView('profile');
-          else if (tab === 'feed') {
+        activeTab={view}
+        onTabChange={(tab: any) => {
+          setView(tab);
+          if (tab === 'feed') {
             setFilter('recent');
             setSearchQuery("");
-            setView('feed');
+            setLocationFilter("all");
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
-          else if (tab === 'likes') {
-            setFilter('my-posts');
-            setSearchQuery("");
-            setView('feed');
-          }
-          else if (tab === 'search') {
-            setView('feed');
-            // Focus search input if possible, or just scroll to it
-            const searchInput = document.querySelector('input[placeholder*="Search"]');
-            if (searchInput) {
-              (searchInput as HTMLInputElement).focus();
-              searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+        }}
+        onAddClick={() => {
+          if (user) {
+            setEditPost(null);
+            setIsCreateModalOpen(true);
+          } else {
+            handleLogin();
           }
         }}
-        onAddClick={() => user ? setIsCreateModalOpen(true) : handleLogin()}
         user={user}
       />
 
@@ -722,12 +975,59 @@ export default function App() {
 
       <CreatePostModal 
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditPost(null);
+        }}
         onSubmit={handleCreatePost}
         isGeneratingImage={isGeneratingImage}
+        editPost={editPost}
+      />
+
+      <CreateStoryModal
+        isOpen={isStoryModalOpen}
+        onClose={() => setIsStoryModalOpen(false)}
+        onSubmit={handleCreateStory}
+        isGenerating={isGeneratingStory}
+      />
+
+      <StoryViewer
+        stories={realStories}
+        initialIndex={selectedStoryIndex}
+        isOpen={isStoryViewerOpen}
+        onClose={() => setIsStoryViewerOpen(false)}
       />
 
       <Toaster position="top-center" richColors theme={isDarkMode ? "dark" : "light"} />
+
+      <AnimatePresence>
+        {successAction && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+          >
+            <div className="bg-blue-600/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 border border-white/20">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1, rotate: [0, 10, -10, 0] }}
+                transition={{ 
+                  delay: 0.2,
+                  scale: { type: "spring" },
+                  rotate: { duration: 0.5, ease: "easeInOut" }
+                }}
+                className="bg-white rounded-full p-4"
+              >
+                <CheckCircle2 className="w-12 h-12 text-blue-600" />
+              </motion.div>
+              <p className="text-xl font-black text-white uppercase tracking-widest">
+                {successAction}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

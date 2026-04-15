@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { MapPin, DollarSign, Share2, Clock, User, Heart, MessageCircle, Sparkles, Trash2, Video, Loader2 } from "lucide-react";
+import { MapPin, DollarSign, Share2, Clock, User, Heart, MessageCircle, Sparkles, Trash2, Video, Loader2, Edit2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "./GlassCard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,6 +21,7 @@ interface PostCardProps {
   onStreak: () => void;
   onShare: (post: any) => void;
   onDelete?: (postId: string) => void;
+  onEdit?: (post: any) => void;
   onGenerateVideo?: (postId: string, mealCombo: string) => Promise<void>;
   isAdmin?: boolean;
 }
@@ -37,6 +38,7 @@ export function PostCard({
   onStreak, 
   onShare,
   onDelete,
+  onEdit,
   onGenerateVideo,
   isAdmin
 }: PostCardProps) {
@@ -56,6 +58,21 @@ export function PostCard({
     }
   };
 
+  const renderTextWithMentions = (text: string) => {
+    if (!text) return null;
+    const parts = text.split(/(@\w+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        return (
+          <span key={i} className="text-blue-400 font-bold cursor-pointer hover:underline">
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
   return (
     <GlassCard className="overflow-hidden border-white/5" whileHover={{ y: -2 }}>
       {/* Post Header */}
@@ -64,7 +81,9 @@ export function PostCard({
           <div className="p-[1.5px] rounded-full bg-gradient-to-tr from-blue-600 to-blue-400">
             <div className="p-[1px] bg-slate-950 rounded-full">
               <Avatar className="h-8 w-8 border-none">
-                <AvatarImage src={post.authorPhoto} className="object-cover" />
+                {post.authorPhoto ? (
+                  <AvatarImage src={post.authorPhoto} className="object-cover" />
+                ) : null}
                 <AvatarFallback className="bg-blue-600 text-[10px] text-white font-bold">
                   {post.authorName.charAt(0)}
                 </AvatarFallback>
@@ -117,6 +136,16 @@ export function PostCard({
               disabled={isGeneratingVideo}
             >
               {isGeneratingVideo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
+            </Button>
+          )}
+          {onEdit && (user?.uid === post.authorId || isAdmin) && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+              onClick={() => onEdit(post)}
+            >
+              <Edit2 className="w-4 h-4" />
             </Button>
           )}
           {onDelete && (user?.uid === post.authorId || isAdmin) && (
@@ -173,9 +202,26 @@ export function PostCard({
             )}
           </AnimatePresence>
 
-          <Badge className="absolute top-3 right-3 bg-black/50 backdrop-blur-md border-white/10 text-white font-bold">
-            Ksh {post.price}
-          </Badge>
+          <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
+            <Badge className="bg-black/50 backdrop-blur-md border-white/10 text-white font-bold">
+              Ksh {post.price}
+            </Badge>
+            {post.mealType && (
+              <Badge className="bg-blue-600/80 backdrop-blur-md border-none text-white text-[10px] capitalize">
+                {post.mealType}
+              </Badge>
+            )}
+          </div>
+
+          {post.dietaryRestrictions && post.dietaryRestrictions.length > 0 && (
+            <div className="absolute bottom-3 left-3 flex gap-1">
+              {post.dietaryRestrictions.map((r: string) => (
+                <Badge key={r} variant="outline" className="bg-black/30 backdrop-blur-sm border-white/20 text-white text-[8px]">
+                  {r}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -217,10 +263,13 @@ export function PostCard({
 
         {/* Caption */}
         <div className="text-sm space-y-1">
-          <p className="text-white leading-relaxed">
+          <div className="text-white leading-relaxed">
             <span className="font-bold mr-2">{post.authorName}</span>
-            <span className="font-medium text-blue-400">#{post.mealCombo.replace(/[^a-zA-Z0-9]/g, '')}</span> {post.description || ""}
-          </p>
+            <span className="font-medium text-blue-400">#{post.mealCombo.replace(/[^a-zA-Z0-9]/g, '')}</span>
+            <div className="mt-1 text-blue-100/80">
+              {renderTextWithMentions(post.description)}
+            </div>
+          </div>
         </div>
 
         {/* Comments Link */}
