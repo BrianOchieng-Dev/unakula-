@@ -440,6 +440,7 @@ export default function App() {
         mediaType: data.mediaType,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expiresAt),
+        viewCount: 0
       });
 
       toast.success("Story shared successfully!");
@@ -453,6 +454,47 @@ export default function App() {
       }
     } finally {
       setIsGeneratingStory(false);
+    }
+  };
+
+  const handleDeleteStory = async (storyId: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "stories", storyId));
+      toast.success("Story deleted");
+      setIsStoryViewerOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `stories/${storyId}`);
+      toast.error("Failed to delete story");
+    }
+  };
+
+  const handleRecordStoryView = async (storyId: string) => {
+    if (!user || !profile) return;
+    
+    const story = realStories.find(s => s.id === storyId);
+    if (!story || story.userId === user.uid) return;
+
+    const viewId = user.uid;
+    const viewRef = doc(db, "stories", storyId, "views", viewId);
+    
+    try {
+      const viewDoc = await getDoc(viewRef);
+      if (!viewDoc.exists()) {
+        const batch = writeBatch(db);
+        batch.set(viewRef, {
+          userId: user.uid,
+          userName: profile.fullname,
+          userPhoto: profile.photoURL || "",
+          viewedAt: serverTimestamp()
+        });
+        batch.update(doc(db, "stories", storyId), {
+          viewCount: increment(1)
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Error recording story view:", error);
     }
   };
 
@@ -826,6 +868,7 @@ export default function App() {
                 onAddStory={() => user ? setIsStoryModalOpen(true) : setIsAuthModalOpen(true)}
                 onViewStory={handleViewStory}
                 userProfile={profile}
+                currentUser={user}
               />
 
               {/* Search & Filter */}
@@ -1063,6 +1106,9 @@ export default function App() {
         initialIndex={selectedStoryIndex}
         isOpen={isStoryViewerOpen}
         onClose={() => setIsStoryViewerOpen(false)}
+        onDelete={handleDeleteStory}
+        onView={handleRecordStoryView}
+        currentUser={user}
       />
 
       <Toaster position="top-center" richColors theme={isDarkMode ? "dark" : "light"} />

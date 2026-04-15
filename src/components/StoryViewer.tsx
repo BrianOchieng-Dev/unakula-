@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { X, ChevronLeft, ChevronRight, Clock } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Clock, Eye, Trash2, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
+import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface Story {
   id: string;
@@ -14,6 +18,7 @@ interface Story {
   mediaURL?: string;
   mediaType: "text" | "image" | "video";
   createdAt: any;
+  viewCount?: number;
 }
 
 interface StoryViewerProps {
@@ -21,11 +26,16 @@ interface StoryViewerProps {
   initialIndex: number;
   isOpen: boolean;
   onClose: () => void;
+  onDelete?: (storyId: string) => void;
+  onView?: (storyId: string) => void;
+  currentUser?: any;
 }
 
-export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryViewerProps) {
+export function StoryViewer({ stories, initialIndex, isOpen, onClose, onDelete, onView, currentUser }: StoryViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
+  const [viewers, setViewers] = useState<any[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -38,6 +48,7 @@ export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryVie
     if (!isOpen) return;
 
     const timer = setInterval(() => {
+      if (isPaused) return;
       setProgress((prev) => {
         if (prev >= 100) {
           handleNext();
@@ -48,7 +59,40 @@ export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryVie
     }, 50); // 5 seconds total (100 * 50ms)
 
     return () => clearInterval(timer);
-  }, [isOpen, currentIndex]);
+  }, [isOpen, currentIndex, isPaused]);
+
+  // Record view when story changes
+  useEffect(() => {
+    if (isOpen && stories[currentIndex] && onView) {
+      onView(stories[currentIndex].id);
+    }
+  }, [currentIndex, isOpen]);
+
+  // Listen for viewers if current user is the author
+  useEffect(() => {
+    if (!isOpen || !stories[currentIndex] || !currentUser) return;
+    
+    const story = stories[currentIndex];
+    if (story.userId !== currentUser.uid) {
+      setViewers([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "stories", story.id, "views"),
+      orderBy("viewedAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const viewersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setViewers(viewersData);
+    });
+
+    return unsubscribe;
+  }, [isOpen, currentIndex, currentUser]);
 
   const handleNext = () => {
     if (currentIndex < stories.length - 1) {
@@ -69,6 +113,7 @@ export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryVie
   if (!stories.length || currentIndex >= stories.length) return null;
 
   const currentStory = stories[currentIndex];
+  const isOwner = currentUser?.uid === currentStory.userId;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -108,13 +153,31 @@ export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryVie
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isOwner && onDelete && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                onClick={() => onDelete(currentStory.id)}
+              >
+                <Trash2 className="w-5 h-5" />
+              </Button>
+            )}
+            <button onClick={onClose} className="p-2 text-white/80 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex items-center justify-center relative bg-slate-900">
+        <div 
+          className="flex-1 flex items-center justify-center relative bg-slate-900"
+          onMouseDown={() => setIsPaused(true)}
+          onMouseUp={() => setIsPaused(false)}
+          onTouchStart={() => setIsPaused(true)}
+          onTouchEnd={() => setIsPaused(false)}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStory.id}
@@ -172,6 +235,46 @@ export function StoryViewer({ stories, initialIndex, isOpen, onClose }: StoryVie
           >
             <ChevronRight className="w-8 h-8" />
           </button>
+
+          {/* Viewers Info (Only for Owner) */}
+          {isOwner && (
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center">
+              <Popover onOpenChange={(open) => setIsPaused(open)}>
+                <PopoverTrigger className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-white hover:bg-black/60 transition-colors">
+                  <Eye className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-bold">{currentStory.viewCount || 0} Views</span>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 bg-slate-900 border-white/10 p-0 overflow-hidden rounded-2xl shadow-2xl">
+                  <div className="p-3 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-400" />
+                    <span className="text-xs font-bold text-white">Viewers</span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                    {viewers.length > 0 ? viewers.map((viewer) => (
+                      <div key={viewer.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors">
+                        <Avatar className="h-8 w-8">
+                          {viewer.userPhoto ? <AvatarImage src={viewer.userPhoto} /> : null}
+                          <AvatarFallback className="bg-blue-600 text-[10px] text-white">
+                            {viewer.userName.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{viewer.userName}</p>
+                          <p className="text-[10px] text-white/40">
+                            {viewer.viewedAt?.toDate ? formatDistanceToNow(viewer.viewedAt.toDate(), { addSuffix: true }) : "just now"}
+                          </p>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="p-4 text-center">
+                        <p className="text-xs text-white/40 italic">No views yet</p>
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

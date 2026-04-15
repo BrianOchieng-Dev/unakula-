@@ -133,7 +133,16 @@ service cloud.firestore {
              data.createdAt is timestamp &&
              data.expiresAt is timestamp &&
              (!('authorPhoto' in data) || isValidUrl(data.authorPhoto)) &&
-             (!('mediaURL' in data) || isValidUrl(data.mediaURL));
+             (!('mediaURL' in data) || isValidUrl(data.mediaURL)) &&
+             (!('viewCount' in data) || (data.viewCount is number && data.viewCount >= 0));
+    }
+
+    function isValidStoryView(data) {
+      return data.keys().hasAll(['userId', 'userName', 'viewedAt']) &&
+             data.userId == request.auth.uid &&
+             data.userName is string &&
+             data.viewedAt is timestamp &&
+             (!('userPhoto' in data) || isValidUrl(data.userPhoto));
     }
 
     function isValidCounterUpdate(postId) {
@@ -232,8 +241,19 @@ service cloud.firestore {
       // Authenticated users can create stories
       allow create: if isAuthenticated() && isValidStory(request.resource.data);
       
+      // Allow update for viewCount increment or author edits
+      allow update: if (isOwner(resource.data.userId) && isValidStory(request.resource.data)) ||
+                    (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount']));
+
       // Only author or admin can delete
       allow delete: if isOwner(resource.data.userId) || isAdmin();
+
+      match /views/{viewId} {
+        // Only the story author can see the list of viewers
+        allow read: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/stories/$(storyId)).data.userId;
+        // Any authenticated user can record a view (once per story)
+        allow create: if isAuthenticated() && viewId == request.auth.uid && isValidStoryView(request.resource.data);
+      }
     }
   }
 }

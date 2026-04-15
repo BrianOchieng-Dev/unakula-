@@ -100,9 +100,22 @@
         "mediaURL": { "type": "string", "format": "uri", "description": "Optional image/video URL" },
         "mediaType": { "type": "string", "enum": ["image", "video", "text"] },
         "createdAt": { "type": "string", "format": "date-time" },
-        "expiresAt": { "type": "string", "format": "date-time" }
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "viewCount": { "type": "number", "description": "Total number of views" }
       },
       "required": ["userId", "authorName", "content", "mediaType", "createdAt", "expiresAt"]
+    },
+    "StoryView": {
+      "title": "StoryView",
+      "description": "A record of a user viewing a story.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "viewedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "viewedAt"]
     }
   },
   "firestore": {
@@ -125,6 +138,10 @@
     "/stories/{storyId}": {
       "schema": "Story",
       "description": "Student stories"
+    },
+    "/stories/{storyId}/views/{viewId}": {
+      "schema": "StoryView",
+      "description": "Viewers of a story"
     },
     "/follows/{followId}": {
       "schema": "Follow",
